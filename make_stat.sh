@@ -39,7 +39,7 @@ git log --no-merges --pretty=format:'{ "hash" :" %H", "author_name" : "%aN", "au
 echo '{}]' >> $outputDataFile
 
 echo '[' > $outputMergesFile
-git log --merges --pretty=format:'{ "hash" :" %H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI"},'>> $outputMergesFile
+git log --merges --pretty=format:'{ "hash" :"%H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI"},'>> $outputMergesFile
 echo '{}]' >> $outputMergesFile
 
 echo 'Processing'
