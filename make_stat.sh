@@ -2,8 +2,9 @@
 
 # 1 - dir
 # 2 - branch name
+# 3 - repo name
 
-if (( $# != 2 )); then
+if (( $# != 3 )); then
    echo "Illegal number of parameters"
    exit 1
 fi
@@ -44,3 +45,13 @@ echo '{}]' >> $outputMergesFile
 echo 'Processing'
 
 python $pwd/process_to_json.py $outputDataFile $outputJsonFile
+if [ $? -ne 0 ]; then
+   echo "Export failed"
+   exit 1
+fi
+
+python $pwd/upload_data.py $3 $outputJsonFile $outputMergesFile
+if [ $? -ne 0 ]; then
+   echo "Upload failed"
+   exit 1
+fi
