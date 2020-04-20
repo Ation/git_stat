@@ -93,6 +93,9 @@ if __name__ == '__main__':
                         author_id = ins_result.inserted_primary_key
                         authors[author_email] = author_id
                 
+                if c['insertions'] == 0 and c['deletions'] == 0:
+                    print('Warnning: empty commit {} from {}'.format(c['hash'], author_email))
+
                 upload_counter = upload_counter + 1
 
                 commit_dt = datetime.fromisoformat(c['date'])
