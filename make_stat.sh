@@ -35,7 +35,7 @@ outputJsonFile=$2.json
 outputMergesFile=$2_merges.json
 
 echo '[' > $outputDataFile
-git log --no-merges --pretty=format:'{ "hash" :" %H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI",' --shortstat >> $outputDataFile
+git log --no-merges --pretty=format:'{ "hash" :"%H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI",' --shortstat >> $outputDataFile
 echo '{}]' >> $outputDataFile
 
 echo '[' > $outputMergesFile
