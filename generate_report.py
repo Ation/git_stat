@@ -20,21 +20,21 @@
 # filter authors with total commits count lesser than threshold
 # width for columns to fit author name
 
-import sys
-from sqlalchemy import create_engine
-from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
-from sqlalchemy import Boolean
-from sqlalchemy import DateTime
-from sqlalchemy import Date
-from sqlalchemy import func
-from sqlalchemy import select
-from sqlalchemy import inspect
+from datetime import datetime, date
 from sqlalchemy import and_
+from sqlalchemy import Boolean
+from sqlalchemy import create_engine
+from sqlalchemy import Date
+from sqlalchemy import DateTime
+from sqlalchemy import func
+from sqlalchemy import inspect
+from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
+from sqlalchemy import select
 from sqlalchemy import text
-
-import xlsxwriter
-from datetime import datetime
+import argparse
 import json
+import sys
+import xlsxwriter
 
 class Report(object):
     def __init__(self):
@@ -59,11 +59,49 @@ def add_month(target):
     return target.replace(month=target.month+1)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('Enter repo name')
-        exit(1)
 
-    repo_name = sys.argv[1]
+    input_parser = argparse.ArgumentParser()
+    input_parser.add_argument('--repo_name',
+                                action='store',
+                                type=str,
+                                required=True,
+                                help='Name of repo to process ( in DB )')
+
+    input_parser.add_argument('--from_date',
+                                action='store',
+                                type=str,
+                                required=False,
+                                help='Starting from date ( MM-YYYY ) ')
+
+    input_parser.add_argument('--min_commits',
+                                action='store',
+                                type=int,
+                                default=0,
+                                help='Minimal number of commits for all period')
+
+
+    args = input_parser.parse_args()
+
+    print('Repo: {}'.format(args.repo_name))
+
+    if args.from_date is not None:
+        parts=args.from_date.split('-')
+        if len(parts) != 2:
+            print('ERROR: frim date format MM-YYYY')
+            exit(1)
+
+        from_month = int(parts[0])
+        from_year = int(parts[1])
+
+        if from_month <= 0 or from_month > 12:
+            print('ERROR: wrong month')
+            exit(1)
+
+        start_from = date(year=from_year, month=from_month, day=1)
+    else:
+        start_from = None
+
+    repo_name = args.repo_name
 
     # connect to db
     db_user_name = 'gitstat'
@@ -87,6 +125,7 @@ if __name__ == '__main__':
     commits_sheet = workbook.add_worksheet('commits')
     additions_sheet = workbook.add_worksheet('additions')
     removals_sheet = workbook.add_worksheet('removals')
+    total_commits_sheet = workbook.add_worksheet('commits_with_merges')
 
     repo_table = Table(repo_name, metadata, autoload=True, autoload_with=engine)
     authors_table = Table('authors', metadata, autoload=True, autoload_with=engine)
@@ -106,10 +145,16 @@ if __name__ == '__main__':
     min_date = min_date.replace(day=1)
     max_date = add_month(max_date.replace(day=1))
 
+    if start_from is not None and min_date < start_from:
+        min_date = start_from
+
     from_date = min_date
     to_date = add_month(min_date)
 
-    commit_limit = 9
+    commit_limit = args.min_commits
+    print('Min commits : {}'.format(commit_limit))
+
+    print('Start from : {}'.format(min_date))
 
     with engine.connect() as connection:
         # get all authors and all commits
@@ -118,6 +163,7 @@ if __name__ == '__main__':
                 authors_table.c.mapping_id.label('author_id'),
                 repo_table.c.commit_hash.label('commit_hash')
             ]).select_from(repo_table.join(authors_table, authors_table.c.id == repo_table.c.author_id)
+            ).where(repo_table.c.commit_date >= min_date
             ).alias()
 
         # count all
@@ -143,6 +189,7 @@ if __name__ == '__main__':
         commits_sheet.write_string(0, 0, 'Month', bold)
         additions_sheet.write_string(0, 0, 'Month', bold)
         removals_sheet.write_string(0, 0, 'Month', bold)
+        total_commits_sheet.write_string(0, 0, 'Month', bold)
 
         author_to_column = {}
         for c, a in enumerate(authors_list):
@@ -152,6 +199,7 @@ if __name__ == '__main__':
             commits_sheet.write(0, column_index, a, bold)
             additions_sheet.write(0, column_index, a, bold)
             removals_sheet.write(0, column_index, a, bold)
+            total_commits_sheet.write(0, column_index, a, bold)
 
         current_row = 1
 
@@ -250,6 +298,7 @@ if __name__ == '__main__':
             commits_sheet.write_string(current_row, 0, period_string)
             additions_sheet.write_string(current_row, 0, period_string)
             removals_sheet.write_string(current_row, 0, period_string)
+            total_commits_sheet.write_string(current_row, 0, period_string)
 
             for k,v in author_to_column.items():
                 row = v
@@ -258,6 +307,7 @@ if __name__ == '__main__':
                 commits_sheet.write_number(current_row, row, report.commits)
                 additions_sheet.write_number(current_row, row, report.additions)
                 removals_sheet.write_number(current_row, row, report.removals)
+                total_commits_sheet.write_number(current_row, row, report.commits + report.merges)
 
             from_date = to_date
             to_date = add_month(to_date)
@@ -265,6 +315,7 @@ if __name__ == '__main__':
 
 
     chartCommits = workbook.add_chart({'type': 'line'})
+    chartCommitsWithMerges = workbook.add_chart({'type': 'line'})
     chartAdditions = workbook.add_chart({'type': 'line'})
     chartRemovals = workbook.add_chart({'type': 'line'})
 
@@ -287,6 +338,12 @@ if __name__ == '__main__':
             'values':     [removals_sheet.name, 1, v, current_row-1, v]
         })
 
+        chartCommitsWithMerges.add_series({
+            'name':       [total_commits_sheet.name, 0, v],
+            'categories': [total_commits_sheet.name, 1, 0, current_row-1, 0],
+            'values':     [total_commits_sheet.name, 1, v, current_row-1, v]
+        })
+
     chartCommits.set_title ({'name': 'Commits per month'})
     chartCommits.set_x_axis({'name': 'Month'})
     chartCommits.set_y_axis({'name': 'Commits'})
@@ -299,13 +356,19 @@ if __name__ == '__main__':
     chartRemovals.set_x_axis({'name': 'Month'})
     chartRemovals.set_y_axis({'name': 'Removals'})
 
+    chartCommitsWithMerges.set_title ({'name': 'Commits and merges'})
+    chartCommitsWithMerges.set_x_axis({'name': 'Month'})
+    chartCommitsWithMerges.set_y_axis({'name': 'Commits'})
+
     chartCommits.set_style(10)
     chartAdditions.set_style(10)
     chartRemovals.set_style(10)
+    chartCommitsWithMerges.set_style(10)
 
     # Insert the chart into the worksheet (with an offset).
     charts_sheet.insert_chart('B2', chartCommits, {'x_offset': 25, 'y_offset': 10})
     charts_sheet.insert_chart('B18', chartAdditions, {'x_offset': 25, 'y_offset': 10})
     charts_sheet.insert_chart('B35', chartRemovals, {'x_offset': 25, 'y_offset': 10})
+    charts_sheet.insert_chart('B54', chartCommitsWithMerges, {'x_offset': 25, 'y_offset': 10})
 
     workbook.close()
