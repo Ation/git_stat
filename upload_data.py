@@ -56,7 +56,7 @@ if __name__ == '__main__':
     db_host = 'localhost'
     db_name = 'gitstat'
 
-    engine = create_engine('mysql+mysqldb://{}:{}@{}/{}'.format(db_user_name, db_password, db_host, db_name), echo=False)
+    engine = create_engine('mysql+pymysql://{}:{}@{}/{}'.format(db_user_name, db_password, db_host, db_name), echo=False)
 
     metadata = MetaData()
 

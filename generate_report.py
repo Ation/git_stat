@@ -109,7 +109,7 @@ if __name__ == '__main__':
     db_host = 'localhost'
     db_name = 'gitstat'
 
-    engine = create_engine('mysql+mysqldb://{}:{}@{}/{}'.format(db_user_name, db_password, db_host, db_name), echo=False)
+    engine = create_engine('mysql+pymysql://{}:{}@{}/{}'.format(db_user_name, db_password, db_host, db_name), echo=False)
 
     metadata = MetaData()
     inspector = inspect(engine)
@@ -365,10 +365,15 @@ if __name__ == '__main__':
     chartRemovals.set_style(10)
     chartCommitsWithMerges.set_style(10)
 
+    chartCommits.set_size({'width': 720, 'height': 576})
+    chartAdditions.set_size({'width': 720, 'height': 576})
+    chartRemovals.set_size({'width': 720, 'height': 576})
+    chartCommitsWithMerges.set_size({'width': 720, 'height': 576})
+
     # Insert the chart into the worksheet (with an offset).
     charts_sheet.insert_chart('B2', chartCommits, {'x_offset': 25, 'y_offset': 10})
-    charts_sheet.insert_chart('B18', chartAdditions, {'x_offset': 25, 'y_offset': 10})
-    charts_sheet.insert_chart('B35', chartRemovals, {'x_offset': 25, 'y_offset': 10})
-    charts_sheet.insert_chart('B54', chartCommitsWithMerges, {'x_offset': 25, 'y_offset': 10})
+    charts_sheet.insert_chart('B32', chartAdditions, {'x_offset': 25, 'y_offset': 10})
+    charts_sheet.insert_chart('B64', chartRemovals, {'x_offset': 25, 'y_offset': 10})
+    charts_sheet.insert_chart('B96', chartCommitsWithMerges, {'x_offset': 25, 'y_offset': 10})
 
     workbook.close()
