@@ -1,4 +1,5 @@
 import sys
+import os
 
 from sqlalchemy import create_engine
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
@@ -45,10 +46,14 @@ if __name__ == '__main__':
     if len(sys.argv) != 4:
         exit(1)
 
+    repo_name = os.path.basename(sys.argv[1])
+    if len(repo_name) == 0:
+        repo_name = os.path.basename(os.path.dirname(sys.argv[1]))
 
-    repo_name = sys.argv[1]
     commits_data_file = sys.argv[2]
     merge_commits_data_file = sys.argv[3]
+
+    print(f'Repo name: {repo_name}')
 
     # connect to db
     db_user_name = 'gitstat'
@@ -95,7 +100,7 @@ if __name__ == '__main__':
     print('Creating tables-------')
     metadata.create_all(engine)
 
-    print('Loading repo ID cash')
+    print('Loading repo ID cache')
     sel_repo_statement = all_repo_table.select()
     repo_map = {}
     with engine.connect() as connection:

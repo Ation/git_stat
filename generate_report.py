@@ -61,11 +61,11 @@ def add_month(target):
 if __name__ == '__main__':
 
     input_parser = argparse.ArgumentParser()
-    input_parser.add_argument('--repo_name',
+    input_parser.add_argument('--repo_names',
                                 action='store',
                                 type=str,
                                 required=True,
-                                help='Name of repo to process ( in DB )')
+                                help='Name of repo to process ( in DB ). Or list of names comma separated')
 
     input_parser.add_argument('--from_date',
                                 action='store',
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     args = input_parser.parse_args()
 
-    print('Repo: {}'.format(args.repo_name))
+    print('Repos: {}'.format(args.repo_names))
 
     if args.from_date is not None:
         parts=args.from_date.split('-')
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     else:
         start_from = None
 
-    repo_name = args.repo_name
+    repo_names = args.repo_names.split(',')
 
     # connect to db
     db_user_name = 'gitstat'
@@ -114,11 +114,7 @@ if __name__ == '__main__':
     metadata = MetaData()
     inspector = inspect(engine)
 
-    if repo_name not in inspector.get_table_names():
-        print('ERROR: repo table {} not found'.format(repo_name))
-        exit(1)
-
-    workbook = xlsxwriter.Workbook('{}_report.xlsx'.format(repo_name))
+    workbook = xlsxwriter.Workbook('{}_report.xlsx'.format('_'.join(repo_names)))
     bold = workbook.add_format({'bold': 1})
 
     charts_sheet = workbook.add_worksheet('charts')
@@ -127,8 +123,24 @@ if __name__ == '__main__':
     removals_sheet = workbook.add_worksheet('removals')
     total_commits_sheet = workbook.add_worksheet('commits_with_merges')
 
-    repo_table = Table(repo_name, metadata, autoload=True, autoload_with=engine)
+    all_repo_table = Table('repo_id', metadata, autoload=True, autoload_with=engine)
+    repo_table = Table('all_commits', metadata, autoload=True, autoload_with=engine)
     authors_table = Table('authors', metadata, autoload=True, autoload_with=engine)
+
+    sel_repo_statement = all_repo_table.select()
+    repo_map = {}
+    with engine.connect() as connection:
+        result = connection.execute(sel_repo_statement)
+        repo_map = {x.name : x.id for x in result }
+
+    repo_ids = []
+
+    for name in repo_names:
+        if name not in repo_map:
+            print(f'ERROR: {name} is undefined repo name')
+            exit(1)
+
+        repo_ids.append(repo_map[name])
 
     # get min and max date
     select_dates_stmt = select([
@@ -218,6 +230,7 @@ if __name__ == '__main__':
                     and_(
                         repo_table.c.commit_date >= from_date
                         , repo_table.c.commit_date < to_date
+                        , repo_table.c.repo_id.in_(repo_ids)
                     )
                 ).alias()
 
