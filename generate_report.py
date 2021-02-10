@@ -23,7 +23,6 @@
 from datetime import datetime, date
 from sqlalchemy import and_
 from sqlalchemy import Boolean
-from sqlalchemy import create_engine
 from sqlalchemy import Date
 from sqlalchemy import DateTime
 from sqlalchemy import func
@@ -31,6 +30,9 @@ from sqlalchemy import inspect
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
 from sqlalchemy import select
 from sqlalchemy import text
+
+from db_connection import CreateEngine
+
 import argparse
 import json
 import sys
@@ -109,7 +111,7 @@ if __name__ == '__main__':
     db_host = 'localhost'
     db_name = 'gitstat'
 
-    engine = create_engine('mysql+pymysql://{}:{}@{}/{}'.format(db_user_name, db_password, db_host, db_name), echo=False)
+    engine = CreateEngine()
 
     metadata = MetaData()
     inspector = inspect(engine)
@@ -175,7 +177,9 @@ if __name__ == '__main__':
                 authors_table.c.mapping_id.label('author_id'),
                 repo_table.c.commit_hash.label('commit_hash')
             ]).select_from(repo_table.join(authors_table, authors_table.c.id == repo_table.c.author_id)
-            ).where(repo_table.c.commit_date >= min_date
+            ).where(
+                and_(repo_table.c.commit_date >= min_date
+                     , repo_table.c.repo_id.in_(repo_ids))
             ).alias()
 
         # count all
