@@ -114,7 +114,6 @@ if __name__ == '__main__':
     engine = CreateEngine()
 
     metadata = MetaData()
-    inspector = inspect(engine)
 
     workbook = xlsxwriter.Workbook('{}_report.xlsx'.format('_'.join(repo_names)))
     bold = workbook.add_format({'bold': 1})
