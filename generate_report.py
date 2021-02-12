@@ -75,6 +75,12 @@ if __name__ == '__main__':
                                 required=False,
                                 help='Starting from date ( MM-YYYY ) ')
 
+    input_parser.add_argument('--till_date',
+                                action='store',
+                                type=str,
+                                required=False,
+                                help='Ending date date ( MM-YYYY ) ')
+
     input_parser.add_argument('--min_commits',
                                 action='store',
                                 type=int,
@@ -89,7 +95,7 @@ if __name__ == '__main__':
     if args.from_date is not None:
         parts=args.from_date.split('-')
         if len(parts) != 2:
-            print('ERROR: frim date format MM-YYYY')
+            print('ERROR: from date format MM-YYYY')
             exit(1)
 
         from_month = int(parts[0])
@@ -102,6 +108,23 @@ if __name__ == '__main__':
         start_from = date(year=from_year, month=from_month, day=1)
     else:
         start_from = None
+
+    if args.till_date is not None:
+        parts=args.till_date.split('-')
+        if len(parts) != 2:
+            print('ERROR: till date format MM-YYYY')
+            exit(1)
+
+        from_month = int(parts[0])
+        from_year = int(parts[1])
+
+        if from_month <= 0 or from_month > 12:
+            print('ERROR: wrong month for till_dat')
+            exit(1)
+
+        till_date = date(year=from_year, month=from_month, day=1)
+    else:
+        till_date = None
 
     repo_names = args.repo_names.split(',')
 
@@ -160,6 +183,9 @@ if __name__ == '__main__':
 
     if start_from is not None and min_date < start_from:
         min_date = start_from
+
+    if till_date is not None and max_date > till_date:
+        max_date = till_date
 
     from_date = min_date
     to_date = add_month(min_date)
