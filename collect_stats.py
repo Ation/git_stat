@@ -1,6 +1,8 @@
 from datetime import datetime
 from urllib.parse import urlparse
 
+import time
+
 from db_connection import CreateEngine
 
 from sqlalchemy import Boolean
@@ -8,7 +10,7 @@ from sqlalchemy import Date
 from sqlalchemy import DateTime
 from sqlalchemy import func
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 import json
 import subprocess
@@ -168,6 +170,8 @@ if __name__ == '__main__':
     engine = CreateEngine()
     metadata = MetaData()
 
+    start_data_upload_time = time.perf_counter()
+
     all_repo_table = Table('repo_id', metadata,
         Column('id', Integer, primary_key=True),
         Column('name', String(length=40), nullable=False, unique=True),
@@ -182,7 +186,8 @@ if __name__ == '__main__':
         Column('mapping_id', Integer, nullable=False, default=0))
 
     global_commits_table = Table('all_commits', metadata,
-        Column('commit_hash', String(length=41), nullable=False, unique=True, primary_key=True),
+        Column('id', Integer, primary_key=True),
+        Column('commit_hash', String(length=41), nullable=False, unique=False),
         Column('author_id', Integer, ForeignKey('authors.id'), nullable=False),
         Column('is_merge', Boolean, nullable=False),
         Column('commit_date_time', DateTime, nullable=False),
@@ -219,11 +224,22 @@ if __name__ == '__main__':
         result = connection.execute(select_authors_statement)
         authors = { x.author_email : x.id for x in result }
 
+    if '' not in authors:
+        print('Registering default undefined customer')
+        with engine.connect() as connection:
+            ins_stmt = all_authors_table.insert().values(author_email='', author_name='undefined user')
+            ins_result = connection.execute(ins_stmt)
+            author_id = ins_result.inserted_primary_key
+            authors['']=author_id
+
+            update_stmt = update(all_authors_table).where(all_authors_table.c.id == author_id).values(mapping_id=author_id)
+            connection.execute(update_stmt)
+
     print('Loading existing hashes')
 
     global_existing_hashes = set()
     with engine.connect() as connection:
-        select_stmt = select([global_commits_table.c.commit_hash])
+        select_stmt = select([global_commits_table.c.commit_hash]).where(global_commits_table.c.repo_id == repo_id)
         result = connection.execute(select_stmt)
         for row in result:
             global_existing_hashes.add(row.commit_hash)
@@ -279,5 +295,8 @@ if __name__ == '__main__':
 
             # no need to add this commit hash to global_existing_hashes, since it is
             # unique in this session
+    end_data_upload_time = time.perf_counter()
+
     print(f'Added {added_commits} commits and {added_merge_commits} merge commits')
     print(f'Skipped {skipped_commits} commits and {skipped_merge_commits} merge commits')
+    print(f'Uploading data time: {end_data_upload_time - start_data_upload_time} seconds')

@@ -192,11 +192,10 @@ if __name__ == '__main__':
 
     commit_limit = args.min_commits
     print('Min commits : {}'.format(commit_limit))
-
     print('Start from : {}'.format(min_date))
 
     with engine.connect() as connection:
-        # get all authors and all commits
+        # get all authors and all commits for a full period
         all_commits_select = select(
             [
                 authors_table.c.mapping_id.label('author_id'),
@@ -204,20 +203,23 @@ if __name__ == '__main__':
             ]).select_from(repo_table.join(authors_table, authors_table.c.id == repo_table.c.author_id)
             ).where(
                 and_(repo_table.c.commit_date >= min_date
+                     , repo_table.c.commit_date < max_date
                      , repo_table.c.repo_id.in_(repo_ids))
-            ).alias()
+            ).alias('all_commits__')
 
-        # count all
-        counters_stmt = select(
-            [
-                authors_table.c.author_name.label('author_name'),
-                func.count(all_commits_select.c.commit_hash).label('commit_count')
-            ]).select_from(
-                all_commits_select.join(authors_table, authors_table.c.id == all_commits_select.c.author_id)
-            ).group_by(all_commits_select.c.author_id
-            ).alias()
+        aggregate_stmt = select([all_commits_select.c.author_id.label('author_id'),
+                                func.count(func.distinct(all_commits_select.c.commit_hash)).label('commit_count')
+                        ]).select_from(all_commits_select
+                        ).group_by(all_commits_select.c.author_id
+                        ).alias('aggregated_commits__')
 
-        total = connection.execute(counters_stmt.select().where(counters_stmt.c.commit_count > commit_limit))
+        mapped_total_stmt = select([authors_table.c.author_name.label('author_name'),
+                                   aggregate_stmt.c.commit_count.label('commit_count')
+                                   ]).select_from(aggregate_stmt.join(authors_table, authors_table.c.id == aggregate_stmt.c.author_id)
+                                ).where(aggregate_stmt.c.commit_count >= commit_limit
+                                ).alias('mapped_total__')
+
+        total = connection.execute(mapped_total_stmt)
         all_authors_in_repo = set()
         for r in total:
             print('{} : {}'.format(r.author_name, r.commit_count))
@@ -225,8 +227,11 @@ if __name__ == '__main__':
 
         authors_list = [ x for x in all_authors_in_repo]
 
-        # write headings
+        if len(authors_list) == 0:
+            print('There are no contributors')
+            exit(0)
 
+        # write headings
         commits_sheet.write_string(0, 0, 'Month', bold)
         additions_sheet.write_string(0, 0, 'Month', bold)
         removals_sheet.write_string(0, 0, 'Month', bold)
@@ -246,7 +251,6 @@ if __name__ == '__main__':
 
         while from_date != max_date:
             # do the query
-
             total_commits_stmt = select(
                 [
                     authors_table.c.mapping_id.label('author_id'),
@@ -255,7 +259,8 @@ if __name__ == '__main__':
                     repo_table.c.removals.label('removals'),
                     repo_table.c.commit_date.label('commit_date'),
                     repo_table.c.is_merge.label('is_merge')
-                ]).select_from(repo_table.join(authors_table, authors_table.c.id == repo_table.c.author_id)).where(
+                ]).select_from(repo_table.join(authors_table, authors_table.c.id == repo_table.c.author_id)
+                ).where(
                     and_(
                         repo_table.c.commit_date >= from_date
                         , repo_table.c.commit_date < to_date
@@ -266,7 +271,7 @@ if __name__ == '__main__':
             stats_commits_stmt = select(
                 [
                     total_commits_stmt.c.author_id.label('author_id'),
-                    func.count(total_commits_stmt.c.commit_hash).label('commit_count'),
+                    func.count(func.distinct(total_commits_stmt.c.commit_hash)).label('commit_count'),
                     func.sum(total_commits_stmt.c.additions).label('additions'),
                     func.sum(total_commits_stmt.c.removals).label('removals'),
                     func.count(func.distinct(total_commits_stmt.c.commit_date)).label('days_with_commit')
@@ -282,7 +287,7 @@ if __name__ == '__main__':
             stats_merges_stmt = select(
                 [
                     total_commits_stmt.c.author_id.label('author_id'),
-                    func.count(total_commits_stmt.c.commit_hash).label('commit_count')
+                    func.count(func.distinct(total_commits_stmt.c.commit_hash)).label('commit_count')
                 ]
             ).select_from(
                 total_commits_stmt

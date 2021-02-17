@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from db_connection import CreateEngine
 
 from sqlalchemy import func
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy import MetaData, Table
 
 from pydantic import BaseModel
@@ -30,17 +30,44 @@ async def test_path():
 @gitstats_app.get("/authors/")
 def authors():
     with engine.connect() as connection:
-        # select authors.author_name, authors.author_email from authors
-        # join (SELECT distinct(mapping_id) as id FROM authors) as mapped
-        # where mapped.id = authors.id;
-        select_mapping = select(func.distinct(authors_table.c.mapping_id).label('id')).alias('mapped')
-        select_authors = select([authors_table.c.author_name, authors_table.c.author_email]
-                            ).select_from(select_mapping.join(authors_table, authors_table.c.id == select_mapping.c.id))
+        select_authors = authors_table.select()
         authors = connection.execute(select_authors)
 
-        return [ {'name' : a.author_name, 'email' : a.author_email} for a in authors]
+        result = {}
 
-@gitstats_app.get("/unmapped_authors/")
+        for entry in authors:
+            author_id = entry.id
+            mapping_id = entry.mapping_id
+            email = entry.author_email
+            name = entry.author_name
+
+            if mapping_id not in result:
+                record = {}
+                record['mapped_emails'] = []
+                record['mapped_names'] = []
+                result[mapping_id] = record
+            else:
+                record = result[mapping_id]
+
+            if mapping_id == author_id:
+                record['name'] = name
+                record['email'] = email
+            else:
+                record['mapped_names'].append(name)
+                record['mapped_emails'].append(email)
+
+        return result
+
+@gitstats_app.get("/authors/self_mapped/")
+def self_mapped_():
+    with engine.connect() as connection:
+
+        select_self_mapped = authors_table.select().where(authors_table.c.mapping_id == authors_table.c.id)
+        authors = connection.execute(select_self_mapped)
+
+        return [ {'name' : a.author_name, 'email' : a.author_email, 'id' : a.id} for a in authors]
+
+@gitstats_app.get("/authors/unmapped/")
 def unmapped_authors():
     with engine.connect() as connection:
 
@@ -49,8 +76,12 @@ def unmapped_authors():
 
         return [ {'name' : a.author_name, 'email' : a.author_email, 'id' : a.id} for a in authors]
 
-@gitstats_app.put("/unmapped_authors/")
-def create_item(request_data: MapUserRequest):
+@gitstats_app.put("/authors/map_author")
+def map_author(request_data: MapUserRequest):
+    # map request_data.user_id to request_data.mapping_id
+    with engine.connect() as connection:
+        update_stmt = update(authors_table).where(authors_table.c.id == request_data.user_id).values(mapping_id=request_data.mapping_id)
+        connection.execute(update_stmt)
     return {'result' : 'ok'}
 
 def get_repo_collection():
