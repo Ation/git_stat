@@ -4,6 +4,7 @@ from db_connection import CreateEngine
 from sqlalchemy import func
 from sqlalchemy import select, update
 from sqlalchemy import MetaData, Table
+from sqlalchemy import desc
 
 from pydantic import BaseModel
 
@@ -18,14 +19,11 @@ engine = CreateEngine()
 metadata = MetaData()
 authors_table = Table('authors', metadata, autoload=True, autoload_with=engine)
 all_repo_table = Table('repo_id', metadata, autoload=True, autoload_with=engine)
+repo_table = Table('all_commits', metadata, autoload=True, autoload_with=engine)
 
 @gitstats_app.get("/")
 async def root():
     return {"message": "Hello World"}
-
-@gitstats_app.get("/test")
-async def test_path():
-    return {"message": "Test path"}
 
 @gitstats_app.get("/authors/")
 def authors():
@@ -96,10 +94,33 @@ def repo_collection():
     return [ { 'id' : v, 'name' : k}  for k,v in get_repo_collection().items()]
 
 @gitstats_app.get("/repo/{repo_name}")
-async def get_repo_by_name(repo_name : str):
+def repo_contributors(repo_name : str):
     all_repo = get_repo_collection()
     if repo_name not in all_repo:
         raise HTTPException(status_code=404, detail=f'Repo {repo_name} not found')
 
     id = all_repo[repo_name]
-    return {'id' : id}
+
+    all_commits_select = select(
+        [
+            authors_table.c.mapping_id.label('author_id'),
+            repo_table.c.commit_hash.label('commit_hash')
+        ]).select_from(repo_table.join(authors_table, authors_table.c.id == repo_table.c.author_id)
+        ).where(repo_table.c.repo_id == id
+        ).alias('all_commits__')
+
+    aggregate_stmt = select([all_commits_select.c.author_id.label('author_id'),
+                            func.count(func.distinct(all_commits_select.c.commit_hash)).label('commit_count')
+                    ]).select_from(all_commits_select
+                    ).group_by(all_commits_select.c.author_id
+                    ).alias('aggregated_commits__')
+
+    mapped_total_stmt = select([authors_table.c.author_name.label('author_name'),
+                               aggregate_stmt.c.commit_count.label('commit_count')
+                               ]).select_from(aggregate_stmt.join(authors_table, authors_table.c.id == aggregate_stmt.c.author_id)
+                            ).order_by(desc(aggregate_stmt.c.commit_count)
+                            ).alias('mapped_total__')
+
+    with engine.connect() as connection:
+        total = connection.execute(mapped_total_stmt)
+        return [ {r.author_name : r.commit_count} for r in total]
