@@ -29,21 +29,37 @@ class CommitStorage():
         self.hashes = set()
         self.commits = []
 
-    def CollectCommits(self, commits):
+    def CollectCommits(self, commits, existing_commits):
+        counter = 0
         for c in commits:
-            if c['commit_hash'] not in self.hashes:
+            ch = c['commit_hash']
+            if ch not in self.hashes and ch not in existing_commits:
                 self.commits.append(c)
                 self.hashes.add(c['commit_hash'])
+                counter = counter + 1
+        return counter
 
 
-def loadRegularCommits(dir_path, branch_name):
-    command = ['git', '-C', dir_path, 'log', branch_name, '--no-merges', '--pretty=format:{ "commit_hash" :"%H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI" }', '--shortstat']
+def loadRegularCommits(dir_path, branch_name, skip_count, load_count):
+    command = ['git'
+            , '-C'
+            , dir_path
+            , 'log'
+            , branch_name
+            , '--no-merges'
+            , '--skip'
+            , str(skip_count)
+            , '-n'
+            , str(load_count)
+            , '--pretty=format:{ "commit_hash" :"%H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI" }', '--shortstat']
     result = subprocess.run(command, stdout=subprocess.PIPE)
     if result.returncode != 0:
         print('ERROR: Failed to get commit history')
         return None
 
     log_report = result.stdout.decode('utf-8').split('\n')
+    if len(log_report) == 1 and log_report[0] == '':
+        return []
 
     current_commit = None
 
@@ -78,14 +94,26 @@ def loadRegularCommits(dir_path, branch_name):
 
     return result
 
-def loadMergeCommits(dir_path, branch_name):
-    command = ['git', '-C', dir_path, 'log', branch_name, '--merges', '--pretty=format:{ "commit_hash" :"%H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI", "is_merge" : true, "additions" : 0, "removals" : 0}']
+def loadMergeCommits(dir_path, branch_name, skip_count, load_count):
+    command = ['git'
+            , '-C'
+            , dir_path
+            , 'log'
+            , branch_name
+            , '--merges'
+            , '--skip'
+            , str(skip_count)
+            , '-n'
+            , str(load_count)
+            , '--pretty=format:{ "commit_hash" :"%H", "author_name" : "%aN", "author_email" : "%aE", "date" : "%aI", "is_merge" : true, "additions" : 0, "removals" : 0}']
     result = subprocess.run(command, stdout=subprocess.PIPE)
     if result.returncode != 0:
         print('ERROR: Failed to get commit history')
         return None
 
     log_report = result.stdout.decode('utf-8').split('\n')
+    if len(log_report) == 1 and log_report[0] == '':
+        return []
 
     return [ json.loads(s) for s in log_report if s != '']
 
@@ -144,33 +172,9 @@ if __name__ == '__main__':
 
     commit_storage = CommitStorage()
 
-    # load all remote branches list on origin
-    command = ['git', '-C', dir_path, 'branch', '--all']
-    result = subprocess.run(command, stdout=subprocess.PIPE)
-    if result.returncode != 0:
-        print('ERROR: Failed to get branch list')
-        exit(1)
-    for branch_string in result.stdout.decode('utf-8').split('\n'):
-        branch_string = branch_string.strip()
-        if '->' in branch_string:
-            continue
-        if branch_string.startswith('remotes/origin'):
-            branches.append(branch_string)
-
-    for branch in branches:
-        print(f'Processing branch {branch}')
-
-        commits = loadRegularCommits(dir_path, branch)
-        merge_commits = loadMergeCommits(dir_path, branch)
-
-        commit_storage.CollectCommits(commits)
-        commit_storage.CollectCommits(merge_commits)
-
     # connect to DB
     engine = CreateEngine()
     metadata = MetaData()
-
-    start_data_upload_time = time.perf_counter()
 
     all_repo_table = Table('repo_id', metadata,
         Column('id', Integer, primary_key=True),
@@ -236,7 +240,6 @@ if __name__ == '__main__':
             connection.execute(update_stmt)
 
     print('Loading existing hashes')
-
     global_existing_hashes = set()
     with engine.connect() as connection:
         select_stmt = select([global_commits_table.c.commit_hash]).where(global_commits_table.c.repo_id == repo_id)
@@ -244,7 +247,62 @@ if __name__ == '__main__':
         for row in result:
             global_existing_hashes.add(row.commit_hash)
 
+    # load all remote branches list on origin
+    command = ['git', '-C', dir_path, 'branch', '--all']
+    result = subprocess.run(command, stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print('ERROR: Failed to get branch list')
+        exit(1)
+    for branch_string in result.stdout.decode('utf-8').split('\n'):
+        branch_string = branch_string.strip()
+        if '->' in branch_string:
+            continue
+        if branch_string.startswith('remotes/origin'):
+            branches.append(branch_string)
+
+    for branch in branches:
+        print(f'Processing branch {branch}')
+
+        total_commits_from_branch = 0
+        total_merges_from_branch = 0
+
+        skip_count_commits = 0
+        skip_count_merges = 0
+        load_portion = 10
+
+        # load commits
+        while True:
+            commits = loadRegularCommits(dir_path, branch, skip_count_commits, load_portion)
+            if len(commits) == 0:
+                break
+
+            collected_commits = commit_storage.CollectCommits(commits, global_existing_hashes)
+            total_commits_from_branch = total_commits_from_branch + collected_commits
+
+            if collected_commits != len(commits):
+                break
+            skip_count_commits = skip_count_commits + load_portion
+
+        # load merges
+        while True:
+            merge_commits = loadMergeCommits(dir_path, branch, skip_count_merges, load_portion)
+
+            if len(merge_commits) == 0:
+                break
+
+            collected_merges = commit_storage.CollectCommits(merge_commits, global_existing_hashes)
+            total_merges_from_branch = total_merges_from_branch + collected_merges
+
+            if collected_merges != len(merge_commits):
+                break
+
+            skip_count_merges = skip_count_merges + load_portion
+
+        print(f'Added {total_commits_from_branch} commits and {total_merges_from_branch} merges')
+
     print('Uploading commits')
+
+    start_data_upload_time = time.perf_counter()
     added_commits=0
     added_merge_commits=0
     skipped_commits=0
@@ -272,6 +330,10 @@ if __name__ == '__main__':
                     ins_result = connection.execute(ins_stmt)
                     author_id = ins_result.inserted_primary_key
                     authors[author_email]=author_id
+
+                    # map to self
+                    update_stmt = update(all_authors_table).where(all_authors_table.c.id == author_id).values(mapping_id=author_id)
+                    connection.execute(update_stmt)
 
 
             commit_dt = datetime.fromisoformat(c['date'])

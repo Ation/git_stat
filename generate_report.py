@@ -170,7 +170,7 @@ if __name__ == '__main__':
     select_dates_stmt = select([
         func.min(repo_table.c.commit_date).label('min_date'),
         func.max(repo_table.c.commit_date).label('max_date')
-    ])
+    ]).where(repo_table.c.repo_id.in_(repo_ids))
 
     with engine.connect() as connection:
         result = connection.execute(select_dates_stmt).first()
@@ -193,6 +193,7 @@ if __name__ == '__main__':
     commit_limit = args.min_commits
     print('Min commits : {}'.format(commit_limit))
     print('Start from : {}'.format(min_date))
+    print('Till date  : {}'.format(to_date))
 
     with engine.connect() as connection:
         # get all authors and all commits for a full period
