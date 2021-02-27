@@ -1,3 +1,6 @@
+# to start
+# uvicorn main_api:gitstats_app --reload --port 8000
+
 from fastapi import FastAPI, HTTPException
 from db_connection import CreateEngine
 

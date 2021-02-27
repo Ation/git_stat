@@ -31,28 +31,14 @@ from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
 from sqlalchemy import select
 from sqlalchemy import text
 
+from report_collector import ReportRange, ReportCollector
+from excel_generator import ExcelGenerator
 from db_connection import CreateEngine
 
 import argparse
 import json
 import sys
 import xlsxwriter
-
-class Report(object):
-    def __init__(self):
-        self.commits = 0
-        self.additions = 0
-        self.removals = 0
-        self.merges = 0
-
-def get_column_name(index):
-    symbols = [ chr(x) for x in range(ord('A'), ord('Z')+1) ]
-    current = index % len(symbols)
-    leftover = index - current
-    result = symbols[current]
-    if leftover == 0:
-        return result
-    return get_column_name(int(leftover/len(symbols))-1) + result
 
 def add_month(target):
     if target.month == 12:
@@ -87,6 +73,12 @@ if __name__ == '__main__':
                                 default=0,
                                 help='Minimal number of commits for all period')
 
+    input_parser.add_argument('--generator',
+                            action='store',
+                            type=str,
+                            required=False,
+                            default='excel',
+                            help='Report generator tool [excel|bokeh]')
 
     args = input_parser.parse_args()
 
@@ -126,8 +118,6 @@ if __name__ == '__main__':
     else:
         till_date = None
 
-    repo_names = args.repo_names.split(',')
-
     # connect to db
     db_user_name = 'gitstat'
     db_password = 'gitstat'
@@ -137,15 +127,6 @@ if __name__ == '__main__':
     engine = CreateEngine()
 
     metadata = MetaData()
-
-    workbook = xlsxwriter.Workbook('{}_report.xlsx'.format('_'.join(repo_names)))
-    bold = workbook.add_format({'bold': 1})
-
-    charts_sheet = workbook.add_worksheet('charts')
-    commits_sheet = workbook.add_worksheet('commits')
-    additions_sheet = workbook.add_worksheet('additions')
-    removals_sheet = workbook.add_worksheet('removals')
-    total_commits_sheet = workbook.add_worksheet('commits_with_merges')
 
     all_repo_table = Table('repo_id', metadata, autoload=True, autoload_with=engine)
     repo_table = Table('all_commits', metadata, autoload=True, autoload_with=engine)
@@ -159,12 +140,17 @@ if __name__ == '__main__':
 
     repo_ids = []
 
-    for name in repo_names:
-        if name not in repo_map:
-            print(f'ERROR: {name} is undefined repo name')
-            exit(1)
+    if args.repo_names == '*':
+        repo_ids = [repo_id for repo_id in repo_map.values()]
+        repo_names = ['all']
+    else:
+        repo_names = args.repo_names.split(',')
+        for name in repo_names:
+            if name not in repo_map:
+                print(f'ERROR: {name} is undefined repo name')
+                exit(1)
 
-        repo_ids.append(repo_map[name])
+            repo_ids.append(repo_map[name])
 
     # get min and max date
     select_dates_stmt = select([
@@ -221,9 +207,12 @@ if __name__ == '__main__':
                                 ).alias('mapped_total__')
 
         total = connection.execute(mapped_total_stmt)
+
         all_authors_in_repo = set()
+
+        print('Cotribution summary:')
         for r in total:
-            print('{} : {}'.format(r.author_name, r.commit_count))
+            print('  {} : {}'.format(r.author_name, r.commit_count))
             all_authors_in_repo.add(r.author_name)
 
         authors_list = [ x for x in all_authors_in_repo]
@@ -232,23 +221,7 @@ if __name__ == '__main__':
             print('There are no contributors')
             exit(0)
 
-        # write headings
-        commits_sheet.write_string(0, 0, 'Month', bold)
-        additions_sheet.write_string(0, 0, 'Month', bold)
-        removals_sheet.write_string(0, 0, 'Month', bold)
-        total_commits_sheet.write_string(0, 0, 'Month', bold)
-
-        author_to_column = {}
-        for c, a in enumerate(authors_list):
-            column_index = c+1
-            author_to_column[a] = column_index
-
-            commits_sheet.write(0, column_index, a, bold)
-            additions_sheet.write(0, column_index, a, bold)
-            removals_sheet.write(0, column_index, a, bold)
-            total_commits_sheet.write(0, column_index, a, bold)
-
-        current_row = 1
+        report = ReportCollector(authors_list)
 
         while from_date != max_date:
             # do the query
@@ -323,105 +296,25 @@ if __name__ == '__main__':
             report_merges = connection.execute(report_merges_statement)
 
             # set data to report
-            # map author to column
-            # write data
-            reports = { x : Report() for x in authors_list}
+            print('Processing range: {} - {}'.format(from_date, to_date))
+            reportRange = ReportRange(from_date, to_date)
 
-            print('{} - {}'.format(from_date, to_date))
             for r in report_commits:
 
-                current_report = Report()
+                current_report = report.getReportEntry(reportRange, r['author_name'])
 
                 current_report.commits = r['commit_count']
                 current_report.additions = r['additions']
                 current_report.removals = r['removals']
 
-                reports[r['author_name']] = current_report
-
             for r in report_merges:
-                if r['author_name'] in reports:
-                    reports[r['author_name']].merges = r['commit_count']
-
-            period_string = '{} {}'.format(from_date.month, from_date.year)
-            commits_sheet.write_string(current_row, 0, period_string)
-            additions_sheet.write_string(current_row, 0, period_string)
-            removals_sheet.write_string(current_row, 0, period_string)
-            total_commits_sheet.write_string(current_row, 0, period_string)
-
-            for k,v in author_to_column.items():
-                row = v
-                report = reports[k]
-
-                commits_sheet.write_number(current_row, row, report.commits)
-                additions_sheet.write_number(current_row, row, report.additions)
-                removals_sheet.write_number(current_row, row, report.removals)
-                total_commits_sheet.write_number(current_row, row, report.commits + report.merges)
+                current_report = report.getReportEntry(reportRange, r['author_name'])
+                current_report.merges = r['commit_count']
 
             from_date = to_date
             to_date = add_month(to_date)
-            current_row = current_row + 1
 
-
-    chartCommits = workbook.add_chart({'type': 'line'})
-    chartCommitsWithMerges = workbook.add_chart({'type': 'line'})
-    chartAdditions = workbook.add_chart({'type': 'line'})
-    chartRemovals = workbook.add_chart({'type': 'line'})
-
-    for k,v in author_to_column.items():
-        chartCommits.add_series({
-            'name':       [commits_sheet.name, 0, v],
-            'categories': [commits_sheet.name, 1, 0, current_row-1, 0],
-            'values':     [commits_sheet.name, 1, v, current_row-1, v]
-        })
-
-        chartAdditions.add_series({
-            'name':       [additions_sheet.name, 0, v],
-            'categories': [additions_sheet.name, 1, 0, current_row-1, 0],
-            'values':     [additions_sheet.name, 1, v, current_row-1, v]
-        })
-
-        chartRemovals.add_series({
-            'name':       [removals_sheet.name, 0, v],
-            'categories': [removals_sheet.name, 1, 0, current_row-1, 0],
-            'values':     [removals_sheet.name, 1, v, current_row-1, v]
-        })
-
-        chartCommitsWithMerges.add_series({
-            'name':       [total_commits_sheet.name, 0, v],
-            'categories': [total_commits_sheet.name, 1, 0, current_row-1, 0],
-            'values':     [total_commits_sheet.name, 1, v, current_row-1, v]
-        })
-
-    chartCommits.set_title ({'name': 'Commits per month'})
-    chartCommits.set_x_axis({'name': 'Month'})
-    chartCommits.set_y_axis({'name': 'Commits'})
-
-    chartAdditions.set_title ({'name': 'Additions per month'})
-    chartAdditions.set_x_axis({'name': 'Month'})
-    chartAdditions.set_y_axis({'name': 'Additions'})
-
-    chartRemovals.set_title ({'name': 'Removals per month'})
-    chartRemovals.set_x_axis({'name': 'Month'})
-    chartRemovals.set_y_axis({'name': 'Removals'})
-
-    chartCommitsWithMerges.set_title ({'name': 'Commits and merges'})
-    chartCommitsWithMerges.set_x_axis({'name': 'Month'})
-    chartCommitsWithMerges.set_y_axis({'name': 'Commits'})
-
-    chartCommits.set_style(10)
-    chartAdditions.set_style(10)
-    chartRemovals.set_style(10)
-    chartCommitsWithMerges.set_style(10)
-
-    chartCommits.set_size({'width': 720, 'height': 576})
-    chartAdditions.set_size({'width': 720, 'height': 576})
-    chartRemovals.set_size({'width': 720, 'height': 576})
-    chartCommitsWithMerges.set_size({'width': 720, 'height': 576})
-
-    # Insert the chart into the worksheet (with an offset).
-    charts_sheet.insert_chart('B2', chartCommits, {'x_offset': 25, 'y_offset': 10})
-    charts_sheet.insert_chart('B32', chartAdditions, {'x_offset': 25, 'y_offset': 10})
-    charts_sheet.insert_chart('B64', chartRemovals, {'x_offset': 25, 'y_offset': 10})
-    charts_sheet.insert_chart('B96', chartCommitsWithMerges, {'x_offset': 25, 'y_offset': 10})
-
-    workbook.close()
+    outputFileName='{}_report.xlsx'.format('_'.join(repo_names))
+    print(f'Generating report to {outputFileName}...')
+    generator = ExcelGenerator(outputFileName=outputFileName)
+    generator.GenerateReport(report)
