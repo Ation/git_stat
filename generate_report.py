@@ -300,16 +300,16 @@ if __name__ == '__main__':
             reportRange = ReportRange(from_date, to_date)
 
             for r in report_commits:
-
                 current_report = report.getReportEntry(reportRange, r['author_name'])
-
-                current_report.commits = r['commit_count']
-                current_report.additions = r['additions']
-                current_report.removals = r['removals']
+                if current_report is not None:
+                    current_report.commits = r['commit_count']
+                    current_report.additions = r['additions']
+                    current_report.removals = r['removals']
 
             for r in report_merges:
                 current_report = report.getReportEntry(reportRange, r['author_name'])
-                current_report.merges = r['commit_count']
+                if current_report is not None:
+                    current_report.merges = r['commit_count']
 
             from_date = to_date
             to_date = add_month(to_date)
