@@ -31,7 +31,7 @@ from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
 from sqlalchemy import select
 from sqlalchemy import text
 
-from report_collector import ReportRange, ReportCollector
+from report_collector import ReportRange, ReportCollector, RepoInfo
 from excel_generator import ExcelGenerator
 from db_connection import CreateEngine
 
@@ -134,9 +134,16 @@ if __name__ == '__main__':
 
     sel_repo_statement = all_repo_table.select()
     repo_map = {}
+
     with engine.connect() as connection:
         result = connection.execute(sel_repo_statement)
-        repo_map = {x.name : x.id for x in result }
+        repo_map = {}
+        repo_list=[]
+        for x in result:
+            repo_map[x.name] = x.id
+            repo_list.append(RepoInfo(x.name, f'https://{x.host}/{x.path}'))
+
+        print('Repo list: {}'.format(len(repo_list)))
 
     repo_ids = []
 
@@ -221,7 +228,7 @@ if __name__ == '__main__':
             print('There are no contributors')
             exit(0)
 
-        report = ReportCollector(authors_list)
+        report = ReportCollector(author_list=authors_list, repo_list=repo_list)
 
         while from_date != max_date:
             # do the query
@@ -314,7 +321,7 @@ if __name__ == '__main__':
             from_date = to_date
             to_date = add_month(to_date)
 
-    outputFileName='{}_report.xlsx'.format('_'.join(repo_names))
+    outputFileName='report.xlsx'
     print(f'Generating report to {outputFileName}...')
     generator = ExcelGenerator(outputFileName=outputFileName)
     generator.GenerateReport(report)

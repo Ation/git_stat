@@ -9,6 +9,9 @@ def get_column_name(index):
         return result
     return get_column_name(int(leftover/len(symbols))-1) + result
 
+def get_cell_name(row, column):
+    return '{}{}'.format(get_column_name(column), int(row+1))
+
 class ExcelGenerator():
     def __init__(self, outputFileName=None):
         self.file_name = outputFileName
@@ -19,11 +22,54 @@ class ExcelGenerator():
         workbook = xlsxwriter.Workbook(self.file_name)
         bold = workbook.add_format({'bold': 1})
 
+        summary_sheet = workbook.add_worksheet('summary')
         charts_sheet = workbook.add_worksheet('charts')
         commits_sheet = workbook.add_worksheet('commits')
         additions_sheet = workbook.add_worksheet('additions')
         removals_sheet = workbook.add_worksheet('removals')
         total_commits_sheet = workbook.add_worksheet('commits_with_merges')
+
+        # write summary on repo
+        summary_table_options = {
+            'columns' :
+            [
+                {'header' : 'Repo name'},
+                {'header' : 'Repo URL'}
+            ]
+        }
+        repo_list = fullReport.getRepoInfo()
+
+        description_row = 1
+        start_row = 3
+        start_column = 1
+
+        end_row = start_row + len(repo_list)
+        end_column =  2
+
+        cell_format = workbook.add_format({
+            'bold':     True,
+            'align':    'center',
+            'valign':   'vcenter',
+        })
+
+        summary_sheet.merge_range('{}:{}'.format(
+            get_cell_name(row=description_row, column=start_column), get_cell_name(row=description_row, column=end_column))
+            , 'Repository used to collect data', cell_format)
+
+        name_column=get_column_name(start_column)
+        url_column=get_column_name(end_column)
+        summary_sheet.set_column(f'{name_column}:{name_column}', 20)
+        summary_sheet.set_column(f'{url_column}:{url_column}', 60)
+
+
+        summary_repo_table = summary_sheet.add_table('{}:{}'.format(
+            get_cell_name(row=start_row, column=start_column), get_cell_name(row=end_row, column=end_column)), options=summary_table_options)
+
+        current_row = start_row + 1
+
+        for r in repo_list:
+            summary_sheet.write_row(get_cell_name(row=current_row, column=start_column), [r.name, r.link])
+            current_row = current_row + 1
 
         # write headings
         commits_sheet.write_string(0, 0, 'Month', bold)

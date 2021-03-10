@@ -1,6 +1,11 @@
 from datetime import date
 from copy import deepcopy
 
+class RepoInfo(object):
+    def __init__(self, name, link):
+        self.name = name
+        self.link = link
+
 class AuthorReport(object):
     def __init__(self):
         self.commits = 0
@@ -14,8 +19,9 @@ class ReportRange(object):
         self.end = end
 
 class ReportCollector(object):
-    def __init__(self, author_list):
+    def __init__(self, author_list, repo_list):
         self.authors_list = deepcopy(author_list)
+        self.repo_list = repo_list
         self.reports = {}
 
     def getRange(self, report_range : ReportRange):
@@ -31,6 +37,9 @@ class ReportCollector(object):
 
     def getAuthors(self):
         return deepcopy(self.authors_list)
+
+    def getRepoInfo(self):
+        return deepcopy(self.repo_list)
 
     def getReportEntry(self, report_range: ReportRange, author:str):
         if author not in self.authors_list:
