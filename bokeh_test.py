@@ -1,3 +1,10 @@
+# https://docs.bokeh.org/en/latest/docs/gallery/range_tool.html
+# https://docs.bokeh.org/en/latest/docs/user_guide/tools.html?highlight=hovering
+# https://docs.bokeh.org/en/latest/docs/reference/palettes.html?highlight=inferno256#large-palettes
+# https://github.com/bokeh/bokeh/blob/2.2.3/examples/howto/Hover%20callback.ipynb
+
+
+
 # https://docs.bokeh.org/en/latest/docs/user_guide/interaction/legends.html
 
 from bokeh.plotting import figure, output_file, show

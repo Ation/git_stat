@@ -138,18 +138,15 @@ if __name__ == '__main__':
     with engine.connect() as connection:
         result = connection.execute(sel_repo_statement)
         repo_map = {}
-        repo_list=[]
         for x in result:
-            repo_map[x.name] = x.id
-            repo_list.append(RepoInfo(x.name, f'https://{x.host}/{x.path}'))
-
-        print('Repo list: {}'.format(len(repo_list)))
+            repo_map[x.name] = x
 
     repo_ids = []
+    repo_list = []
 
     if args.repo_names == '*':
-        repo_ids = [repo_id for repo_id in repo_map.values()]
-        repo_names = ['all']
+        repo_ids = [x.id for x in repo_map.values()]
+        repo_list = [RepoInfo(x.name, f'https://{x.host}/{x.path}') for x in repo_map.values()]
     else:
         repo_names = args.repo_names.split(',')
         for name in repo_names:
@@ -157,7 +154,9 @@ if __name__ == '__main__':
                 print(f'ERROR: {name} is undefined repo name')
                 exit(1)
 
-            repo_ids.append(repo_map[name])
+            x = repo_map[name]
+            repo_ids.append(x.id)
+            repo_list.append(RepoInfo(x.name, f'https://{x.host}/{x.path}'))
 
     # get min and max date
     select_dates_stmt = select([
