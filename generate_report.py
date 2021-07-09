@@ -52,7 +52,8 @@ if __name__ == '__main__':
     input_parser.add_argument('--repo_names',
                                 action='store',
                                 type=str,
-                                required=True,
+                                required=False,
+                                default='*',
                                 help='Name of repo to process ( in DB ). Or list of names comma separated')
 
     input_parser.add_argument('--from_date',
@@ -119,11 +120,6 @@ if __name__ == '__main__':
         till_date = None
 
     # connect to db
-    db_user_name = 'gitstat'
-    db_password = 'gitstat'
-    db_host = 'localhost'
-    db_name = 'gitstat'
-
     engine = CreateEngine()
 
     metadata = MetaData()

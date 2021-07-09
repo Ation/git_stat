@@ -9,7 +9,7 @@ from sqlalchemy import Boolean
 from sqlalchemy import Date
 from sqlalchemy import DateTime
 from sqlalchemy import func
-from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
+from sqlalchemy import MetaData, Table, Column, Integer, Text, String, ForeignKey, Float, Boolean
 from sqlalchemy import select, update
 
 import json

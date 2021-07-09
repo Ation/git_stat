@@ -1,0 +1,6 @@
+
+test local setup:
+
+docker run --name test_mysql --network mysql_network -v mysql_gitstat:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=password --rm -it mysql:8.0.23
+
+docker run -it --name myadmin --network mysql_network --link test_mysql:db -p 8080:80 --rm phpmyadmin
