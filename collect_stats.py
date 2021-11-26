@@ -11,6 +11,7 @@ from sqlalchemy import DateTime
 from sqlalchemy import func
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String, ForeignKey, Float, Boolean
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 import json
 import subprocess
@@ -130,10 +131,15 @@ class GitRepoInfo():
         # path '/user/reponame.git' -> reponame
         return path.split('/')[-1].split('.')[0]
 
+def load_authors_cache(all_authors_table, connection):
+    select_authors_statement = all_authors_table.select()
+    result = connection.execute(select_authors_statement)
+    return { x.author_email : x.id for x in result }
+
 def GetRepoInfo(url):
     if url.startswith('https'):
         u = urlparse(url)
-        return GitRepoInfo(u.netloc, u.path)
+        return GitRepoInfo(u.netloc.split('@')[-1], u.path)
 
     u = url.split('@')[-1]
     f = u.split(':')
@@ -219,25 +225,28 @@ if __name__ == '__main__':
         with engine.connect() as connection:
             ins_stmt = all_repo_table.insert().values(name=repo_info.short_name, path=repo_info.path, host=repo_info.host)
             ins_result = connection.execute(ins_stmt)
-            repo_id = ins_result.inserted_primary_key
+            repo_id = ins_result.inserted_primary_key[0]
 
     print('Loading existing authors cache')
-    select_authors_statement = all_authors_table.select()
     authors = {}
     with engine.connect() as connection:
-        result = connection.execute(select_authors_statement)
-        authors = { x.author_email : x.id for x in result }
+        authors = load_authors_cache(all_authors_table, connection)
 
     if '' not in authors:
         print('Registering default undefined customer')
         with engine.connect() as connection:
-            ins_stmt = all_authors_table.insert().values(author_email='', author_name='undefined user')
-            ins_result = connection.execute(ins_stmt)
-            author_id = ins_result.inserted_primary_key
-            authors['']=author_id
+            try:
+                ins_stmt = all_authors_table.insert().values(author_email='', author_name='undefined user')
+                ins_result = connection.execute(ins_stmt)
+                author_id = ins_result.inserted_primary_key[0]
+                authors['']=author_id
 
-            update_stmt = update(all_authors_table).where(all_authors_table.c.id == author_id).values(mapping_id=author_id)
-            connection.execute(update_stmt)
+                update_stmt = update(all_authors_table).where(all_authors_table.c.id == author_id).values(mapping_id=author_id)
+                connection.execute(update_stmt)
+            except IntegrityError as e:
+                authors = load_authors_cache(all_authors_table, connection)
+            except:
+                raise
 
     print('Loading existing hashes')
     global_existing_hashes = set()
@@ -322,19 +331,23 @@ if __name__ == '__main__':
 
             author_email = c['author_email']
             author_id = -1
-            if author_email in authors:
-                author_id = authors[author_email]
-            else:
+            if author_email not in authors:
                 with engine.connect() as connection:
-                    ins_stmt = all_authors_table.insert().values(author_email=author_email, author_name=c['author_name'])
-                    ins_result = connection.execute(ins_stmt)
-                    author_id = ins_result.inserted_primary_key
-                    authors[author_email]=author_id
+                    try:
+                        ins_stmt = all_authors_table.insert().values(author_email=author_email, author_name=c['author_name'])
+                        ins_result = connection.execute(ins_stmt)
+                        author_id = ins_result.inserted_primary_key[0]
+                        authors[author_email]=author_id
 
-                    # map to self
-                    update_stmt = update(all_authors_table).where(all_authors_table.c.id == author_id).values(mapping_id=author_id)
-                    connection.execute(update_stmt)
-
+                        # map to self
+                        update_stmt = update(all_authors_table).where(all_authors_table.c.id == author_id).values(mapping_id=author_id)
+                        connection.execute(update_stmt)
+                    except IntegrityError as e:
+                        print(f'{author_email} already defined. reloading cache')
+                        authors = load_authors_cache(all_authors_table, connection)
+                    except:
+                        raise
+            author_id = authors[author_email]
 
             commit_dt = datetime.fromisoformat(c['date'])
 

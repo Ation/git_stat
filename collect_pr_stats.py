@@ -106,7 +106,7 @@ def load_pr_stats(user, token):
                         with engine.connect() as connection:
                             ins_stmt = github_authors_table.insert().values(author_id=1, github_user_name=author_name)
                             ins_result = connection.execute(ins_stmt)
-                            author_id = ins_result.inserted_primary_key
+                            author_id = ins_result.inserted_primary_key[0]
                             github_users[author_name] = author_id
                             print(f'Added GH user: {author_name}')
 
