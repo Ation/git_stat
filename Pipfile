@@ -1,0 +1,14 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+sqlalchemy = "==1.4.50"
+requests = "*"
+xlsxwriter = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
