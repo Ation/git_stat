@@ -20,31 +20,25 @@
 # filter authors with total commits count lesser than threshold
 # width for columns to fit author name
 
-from datetime import datetime, date
+from datetime import date
 from sqlalchemy import and_
-from sqlalchemy import Boolean
-from sqlalchemy import Date
-from sqlalchemy import DateTime
 from sqlalchemy import func
-from sqlalchemy import inspect
-from sqlalchemy import MetaData, Table, Column, Integer, Text, String,ForeignKey
+from sqlalchemy import MetaData, Table
 from sqlalchemy import select
-from sqlalchemy import text
 
 from report_collector import ReportRange, ReportCollector, RepoInfo
 from excel_generator import ExcelGenerator
 from db_connection import CreateEngine
 
 import argparse
-import json
-import sys
-import xlsxwriter
+
 
 def add_month(target):
     if target.month == 12:
-        return target.replace(year=target.year+1, month=1)
+        return target.replace(year=target.year + 1, month=1)
 
-    return target.replace(month=target.month+1)
+    return target.replace(month=target.month + 1)
+
 
 if __name__ == '__main__':
 
@@ -86,7 +80,7 @@ if __name__ == '__main__':
     print('Repos: {}'.format(args.repo_names))
 
     if args.from_date is not None:
-        parts=args.from_date.split('-')
+        parts = args.from_date.split('-')
         if len(parts) != 2:
             print('ERROR: from date format MM-YYYY')
             exit(1)
@@ -103,7 +97,7 @@ if __name__ == '__main__':
         start_from = None
 
     if args.till_date is not None:
-        parts=args.till_date.split('-')
+        parts = args.till_date.split('-')
         if len(parts) != 2:
             print('ERROR: till date format MM-YYYY')
             exit(1)

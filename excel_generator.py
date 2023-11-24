@@ -1,16 +1,19 @@
 import xlsxwriter
 
+
 def get_column_name(index):
-    symbols = [ chr(x) for x in range(ord('A'), ord('Z')+1) ]
+    symbols = [chr(x) for x in range(ord('A'), ord('Z') + 1)]
     current = index % len(symbols)
     leftover = index - current
     result = symbols[current]
     if leftover == 0:
         return result
-    return get_column_name(int(leftover/len(symbols))-1) + result
+    return get_column_name(int(leftover / len(symbols)) - 1) + result
+
 
 def get_cell_name(row, column):
-    return '{}{}'.format(get_column_name(column), int(row+1))
+    return '{}{}'.format(get_column_name(column), int(row + 1))
+
 
 class ExcelGenerator():
     def __init__(self, outputFileName=None):
@@ -31,10 +34,10 @@ class ExcelGenerator():
 
         # write summary on repo
         summary_table_options = {
-            'columns' :
+            'columns':
             [
-                {'header' : 'Repo name'},
-                {'header' : 'Repo URL'}
+                {'header': 'Repo name'},
+                {'header': 'Repo URL'}
             ]
         }
         repo_list = fullReport.getRepoInfo()
@@ -44,7 +47,7 @@ class ExcelGenerator():
         start_column = 1
 
         end_row = start_row + len(repo_list)
-        end_column =  2
+        end_column = 2
 
         cell_format = workbook.add_format({
             'bold':     True,
@@ -60,7 +63,6 @@ class ExcelGenerator():
         url_column=get_column_name(end_column)
         summary_sheet.set_column(f'{name_column}:{name_column}', 20)
         summary_sheet.set_column(f'{url_column}:{url_column}', 60)
-
 
         summary_repo_table = summary_sheet.add_table('{}:{}'.format(
             get_cell_name(row=start_row, column=start_column), get_cell_name(row=end_row, column=end_column)), options=summary_table_options)

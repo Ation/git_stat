@@ -8,8 +8,7 @@ from db_connection import CreateEngine
 from sqlalchemy import Boolean
 from sqlalchemy import Date
 from sqlalchemy import DateTime
-from sqlalchemy import func
-from sqlalchemy import MetaData, Table, Column, Integer, Text, String, ForeignKey, Float, Boolean
+from sqlalchemy import MetaData, Table, Column, Integer, String, ForeignKey
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -17,13 +16,6 @@ import json
 import subprocess
 import sys
 
-# commit_hash
-# author_name
-# author_email
-# date
-# additions
-# removals
-# is merge
 
 class CommitStorage():
     def __init__(self):
@@ -72,6 +64,7 @@ def loadRegularCommits(dir_path, branch_name, skip_count, load_count):
             continue
 
         if s.startswith('{'):
+            s = s.replace('\\', '_')
             current_commit = json.loads(s)
             current_commit['is_merge'] = False
         else:
@@ -79,8 +72,8 @@ def loadRegularCommits(dir_path, branch_name, skip_count, load_count):
             if len(stats) != 2 and len(stats) != 3:
                 continue
 
-            current_commit['additions']=0
-            current_commit['removals']=0
+            current_commit['additions'] = 0
+            current_commit['removals'] = 0
 
             for stat in stats:
                 data = stat.split(' ')
@@ -116,12 +109,13 @@ def loadMergeCommits(dir_path, branch_name, skip_count, load_count):
     if len(log_report) == 1 and log_report[0] == '':
         return []
 
-    return [ json.loads(s) for s in log_report if s != '']
+    return [json.loads(s.replace('\\', '_')) for s in log_report if s != '']
+
 
 class GitRepoInfo():
     def __init__(self, host, path, short_name = None):
-        self.host = host # example github.com
-        self.path = path # example user/repoName.git
+        self.host = host  # example github.com
+        self.path = path  # example user/repoName.git
         if self.path[0] == '/':
             self.path = self.path[1:]
         if short_name is None:
@@ -131,10 +125,12 @@ class GitRepoInfo():
         # path '/user/reponame.git' -> reponame
         return path.split('/')[-1].split('.')[0]
 
+
 def load_authors_cache(all_authors_table, connection):
     select_authors_statement = all_authors_table.select()
     result = connection.execute(select_authors_statement)
-    return { x.author_email : x.id for x in result }
+    return {x.author_email: x.id for x in result}
+
 
 def GetRepoInfo(url):
     if url.startswith('https'):
@@ -145,6 +141,7 @@ def GetRepoInfo(url):
     f = u.split(':')
 
     return GitRepoInfo(f[0], f[1])
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
